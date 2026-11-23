@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../engine/recurrence.dart';
 import '../engine/score_engine.dart';
 import 'database.dart';
+import 'settings_dao.dart';
 
 /// 任务仓储：CRUD + 结算事务（v3.2 §3.3，全部同事务）
 ///
@@ -11,7 +12,7 @@ import 'database.dart';
 ///   → 循环任务生成下一实例（同一事务）
 /// - 撤销完成：adjust 冲正（settle_date 挂回原完成日，同日撤销退回当日已得、
 ///   跨天只改余额与历史净得分）+ 状态回滚 + 删除已自动生成的下一实例（同一事务）
-/// - 删除：仅 todo/overdue；done 不可删只能撤销；删除循环实例 = 跳过本次
+/// - 删除：逾期 DDL 通过积分归档；删除每日循环实例 = 跳过本次
 /// - 逾期：置 overdue、移出活跃集合、无流水
 
 /// 完成操作结果
@@ -24,6 +25,8 @@ class CompleteResult {
   /// 失败原因：already_done / overdue / not_found
   final String? reason;
 }
+
+enum ArchiveResult { archived, unavailable, priceChanged }
 
 class TaskRepository {
   TaskRepository(this.db);
@@ -60,8 +63,10 @@ class TaskRepository {
   /// 试用修复（2026-10-17）：撤销完成的冲正记录挂回原完成日 settle_date，
   /// 因此同日撤销会退回当日已得（池恢复可重拿完整份额）；
   /// 跨天撤销只影响原完成日的历史净得分与余额，撤销当天不会出现负数。
-  Future<double> earnedToday(DateTime nowLocal) async {
-    final settleDate = _localDateKey(nowLocal);
+  Future<double> earnedToday(DateTime nowLocal) =>
+      _earnedOn(_localDateKey(nowLocal));
+
+  Future<double> _earnedOn(String settleDate) async {
     final rows =
         await (db.select(db.creditLedger)..where(
               (l) =>
@@ -72,10 +77,181 @@ class TaskRepository {
     return rows.fold<double>(0, (s, r) => s + r.amount);
   }
 
-  Future<double> balance() async {
+  /// Converted credits are spendable from the next local day.
+  Future<double> balance({DateTime? now}) => db.transaction(
+    () => _balanceBefore(localDateKey((now ?? DateTime.now()).toLocal())),
+  );
+
+  Future<double> _balanceBefore(String date) async {
     final rows = await db.select(db.creditLedger).get();
-    return rows.fold<double>(0, (s, r) => s + r.amount);
+    final start = await SettingsDao(db).get(_creditStartKey);
+    return rows.fold<double>(0, (sum, row) {
+      final isConvertedScore =
+          start != null &&
+          row.settleDate.compareTo(start) >= 0 &&
+          (row.type == 'earn' || row.type == 'adjust');
+      final isUnsettled =
+          (row.type == _baseCredit || row.type == _bonusCredit) &&
+          row.settleDate.compareTo(date) >= 0;
+      final futureCredit =
+          (row.type == 'archive' || row.refType == 'plan') &&
+          row.settleDate.compareTo(date) > 0;
+      return isConvertedScore || isUnsettled || futureCredit
+          ? sum
+          : sum + row.amount;
+    });
   }
+
+  static const _creditStartKey = 'daily_credit_start';
+  static const _creditLastDateKey = 'daily_credit_last_date';
+  static const _baseCredit = 'daily_credit_base';
+  static const _bonusCredit = 'daily_credit_bonus';
+
+  Future<({int base, int bonus})> dailyCredits(DateTime nowLocal) =>
+      _creditsOn(localDateKey(nowLocal));
+
+  Future<({int base, int bonus})> _creditsOn(String date) async {
+    final rows = await (db.select(db.creditLedger)..where(
+          (row) =>
+              row.settleDate.equals(date) &
+              row.type.isIn([_baseCredit, _bonusCredit]),
+        ))
+        .get();
+    var base = 0;
+    var bonus = 0;
+    for (final row in rows) {
+      if (row.type == _baseCredit) {
+        base += row.amount.toInt();
+      } else {
+        bonus += row.amount.toInt();
+      }
+    }
+    return (base: base, bonus: bonus);
+  }
+
+  Future<void> _postCreditDelta(
+    String date,
+    String type,
+    int delta,
+    DateTime nowUtc,
+  ) async {
+    if (delta == 0) return;
+    await db.into(db.creditLedger).insert(
+      CreditLedgerCompanion.insert(
+        type: type,
+        amount: delta.toDouble(),
+        settleDate: date,
+        createdAtUtc: nowUtc,
+      ),
+    );
+  }
+
+  static String? _requiredDate(Task task) => task.taskKind == 'daily'
+      ? task.scheduledDate
+      : localDateKey(task.deadlineUtc.toLocal());
+
+  Future<void> _syncCredits(
+    String date,
+    DateTime nowUtc, {
+    bool refreshBonus = true,
+  }) async {
+    final posted = await _creditsOn(date);
+    final score = await _earnedOn(date);
+    // Raw scores have one decimal place. Normalize floating-point sums first.
+    final base = ((score * 10).round() / 100).round();
+    await _postCreditDelta(date, _baseCredit, base - posted.base, nowUtc);
+    if (!refreshBonus) return;
+
+    final day = DateTime.parse(date);
+    final end = DateTime(day.year, day.month, day.day + 1).toUtc();
+    final required = await (db.select(db.tasks)..where(
+          (task) =>
+              task.status.equals('cancelled').not() &
+              ((task.taskKind.equals('daily') & task.scheduledDate.equals(date)) |
+                  (task.taskKind.equals('daily').not() &
+                      task.deadlineUtc.isBiggerOrEqualValue(day.toUtc()) &
+                      task.deadlineUtc.isSmallerThanValue(end))),
+        ))
+        .get();
+    final allDone =
+        required.isNotEmpty &&
+        required.every(
+          (task) =>
+              task.status == 'done' &&
+              task.completedAtUtc != null &&
+              task.completedAtUtc!.isBefore(end),
+        );
+    await _postCreditDelta(
+      date,
+      _bonusCredit,
+      (allDone ? 3 : 0) - posted.bonus,
+      nowUtc,
+    );
+  }
+
+  // A missed daily occurrence blocks a bonus even if no task row was generated.
+  bool _missedDailyInstance(List<Task> tasks, String date) {
+    final latest = <String, Task>{};
+    for (final task in tasks) {
+      final series = task.seriesId;
+      final scheduled = task.scheduledDate;
+      if (task.taskKind != 'daily' ||
+          series == null ||
+          scheduled == null ||
+          scheduled.compareTo(date) > 0) {
+        continue;
+      }
+      final previous = latest[series]?.scheduledDate;
+      if (previous == null || scheduled.compareTo(previous) > 0) {
+        latest[series] = task;
+      }
+    }
+    return latest.values.any((task) {
+      if (task.scheduledDate == date) return false;
+      var next = nextDeadline(task.deadlineUtc, task.repeatRule, task.repeatEndUtc);
+      while (next != null) {
+        final scheduled = localDateKey(next.toLocal());
+        if (scheduled.compareTo(date) >= 0) return scheduled == date;
+        next = nextDeadline(next, task.repeatRule, task.repeatEndUtc);
+      }
+      return false;
+    });
+  }
+
+  /// Returns the balance before rollover when a new local day is first seen.
+  Future<double?> refreshDailyCredits(DateTime nowUtc) => db.transaction(() async {
+    final today = localDateKey(nowUtc.toLocal());
+    final settings = SettingsDao(db);
+    final start = await settings.get(_creditStartKey);
+    if (start == null) await settings.set(_creditStartKey, today);
+    if (start != null && today.compareTo(start) < 0) return null;
+
+    final lastDate = await settings.get(_creditLastDateKey);
+    double? balanceBeforeRollover;
+    if (lastDate != null && lastDate.compareTo(today) < 0) {
+      balanceBeforeRollover = await _balanceBefore(lastDate);
+      // Reconcile the previous day and any due dates passed while closed.
+      final tasks = await allTasks();
+      final dates = {
+        lastDate,
+        ...tasks.map(_requiredDate).whereType<String>().where(
+          (date) => date.compareTo(lastDate) > 0 && date.compareTo(today) < 0,
+        ),
+      }.toList()..sort();
+      for (final date in dates) {
+        await _syncCredits(
+          date,
+          nowUtc,
+          refreshBonus: date == lastDate || !_missedDailyInstance(tasks, date),
+        );
+      }
+    }
+    await _syncCredits(today, nowUtc);
+    if (lastDate == null || balanceBeforeRollover != null) {
+      await settings.set(_creditLastDateKey, today);
+    }
+    return balanceBeforeRollover;
+  });
 
   Future<List<CreditLedgerData>> ledger() => db.select(db.creditLedger).get();
 
@@ -95,7 +271,7 @@ class TaskRepository {
   }) async {
     final now = nowUtc ?? DateTime.now().toUtc();
     final t = await taskById(id);
-    if (t == null) return;
+    if (t == null || t.status == 'archived') return;
     // Converting out of a daily series must stop older occurrences from reviving it.
     if (t.taskKind == 'daily' &&
         t.seriesId != null &&
@@ -119,14 +295,18 @@ class TaskRepository {
     }
     await (db.update(
       db.tasks,
-    )..where((tbl) => tbl.id.equals(id))).write(effective);
+    )..where((tbl) => tbl.id.equals(id) & tbl.status.equals('archived').not()))
+        .write(effective);
   }
 
-  /// 删除：仅 todo/overdue；done 不可删（返回 false）
-  Future<bool> deleteTask(String id) async {
+  Future<bool> deleteTask(String id, {DateTime? nowUtc}) =>
+      db.transaction(() async {
     final t = await taskById(id);
-    if (t == null) return false;
-    if (t.status == 'done') return false;
+    if (t == null ||
+        (t.status != 'todo' && t.status != 'overdue') ||
+        archiveCost(t, nowUtc ?? DateTime.now()) != null) {
+      return false;
+    }
     if (t.taskKind == 'daily') {
       await (db.update(db.tasks)..where((r) => r.id.equals(id))).write(
         const TasksCompanion(status: Value('cancelled')),
@@ -135,7 +315,58 @@ class TaskRepository {
       await (db.delete(db.tasks)..where((tbl) => tbl.id.equals(id))).go();
     }
     return true;
+  });
+
+  /// A quote exists only for a still-unfinished DDL at or past its deadline.
+  static int? archiveCost(Task task, DateTime now) {
+    if ((task.taskKind != 'ddl' && task.taskKind != 'legacy') ||
+        (task.status != 'todo' && task.status != 'overdue') ||
+        now.isBefore(task.deadlineUtc)) {
+      return null;
+    }
+    final days = now.difference(task.deadlineUtc).inDays;
+    if (days == 0) return 1;
+    if (days < 3) return 3;
+    if (days < 7) return 5;
+    if (days < 14) return 8;
+    return 12;
   }
+
+  Future<ArchiveResult> archiveOverdue(
+    Task expected, {
+    required int quotedCost,
+    required DateTime nowUtc,
+  }) => db.transaction(() async {
+    final current = await taskById(expected.id);
+    if (current == null ||
+        current.deadlineUtc != expected.deadlineUtc ||
+        current.title != expected.title ||
+        current.taskKind != expected.taskKind) {
+      return ArchiveResult.unavailable;
+    }
+    final cost = archiveCost(current, nowUtc);
+    if (cost == null) return ArchiveResult.unavailable;
+    if (cost != quotedCost) return ArchiveResult.priceChanged;
+
+    await (db.update(db.tasks)..where((task) => task.id.equals(current.id)))
+        .write(
+          TasksCompanion(
+            status: const Value('archived'),
+            updatedAtUtc: Value(nowUtc),
+          ),
+        );
+    await db.into(db.creditLedger).insert(
+      CreditLedgerCompanion.insert(
+        type: 'archive',
+        amount: -cost.toDouble(),
+        refType: const Value('task'),
+        refId: Value(current.id),
+        settleDate: localDateKey(nowUtc.toLocal()),
+        createdAtUtc: nowUtc,
+      ),
+    );
+    return ArchiveResult.archived;
+  });
 
   // ---------- 完成（同事务） ----------
 
@@ -148,7 +379,7 @@ class TaskRepository {
       if (t.status == 'done') {
         return const CompleteResult(ok: false, reason: 'already_done');
       }
-      if (t.status == 'cancelled' ||
+      if (t.status == 'cancelled' || t.status == 'archived' ||
           (t.taskKind == 'daily' &&
               t.scheduledDate != localDateKey(nowUtc.toLocal()))) {
         return const CompleteResult(ok: false, reason: 'not_today');
@@ -233,6 +464,11 @@ class TaskRepository {
             );
       }
 
+      final start = await SettingsDao(db).get(_creditStartKey);
+      final today = localDateKey(nowLocal);
+      if (start != null && today.compareTo(start) >= 0) {
+        await _syncCredits(today, nowUtc);
+      }
       return CompleteResult(ok: true, score: score);
     });
   }
@@ -293,6 +529,19 @@ class TaskRepository {
           ))
           .go();
 
+      final start = await SettingsDao(db).get(_creditStartKey);
+      final today = localDateKey(nowUtc.toLocal());
+      if (start != null && today.compareTo(start) >= 0) {
+        if (earn.settleDate != today && earn.settleDate.compareTo(start) >= 0) {
+          await _syncCredits(earn.settleDate, nowUtc, refreshBonus: false);
+        }
+        final due = _requiredDate(t);
+        if (due != null && due.compareTo(start) >= 0 && due.compareTo(today) < 0) {
+          final posted = await _creditsOn(due);
+          await _postCreditDelta(due, _bonusCredit, -posted.bonus, nowUtc);
+        }
+        await _syncCredits(today, nowUtc);
+      }
       return true;
     });
   }

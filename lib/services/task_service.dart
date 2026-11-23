@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 
 import '../db/database.dart';
+import 'plan_service.dart';
 import '../db/task_repository.dart';
 import '../db/settings_dao.dart';
 import '../engine/recurrence.dart';
@@ -76,6 +77,24 @@ class TaskApproval {
   final String payload, localDate;
 }
 
+class CompletionRecord {
+  const CompletionRecord.forTask(Task value) : task = value, plan = null;
+  const CompletionRecord.forPlan(Plan value) : task = null, plan = value;
+
+  final Task? task;
+  final Plan? plan;
+  String get key => task == null ? 'plan:${plan!.id}' : 'task:${task!.id}';
+  String get title => task?.title ?? plan!.title;
+  DateTime? get completedAt => task?.completedAtUtc ?? plan?.completedAtUtc;
+  DateTime? get deadline => task?.deadlineUtc ?? plan?.deadlineUtc;
+  String get label => switch (task?.taskKind) {
+    'daily' => '每日任务',
+    'legacy' => '旧版待分类',
+    null => '计划',
+    _ => 'DDL',
+  };
+}
+
 class TaskService {
   TaskService(AppDatabase db) : _db = db, _repo = TaskRepository(db);
   final AppDatabase _db;
@@ -83,6 +102,14 @@ class TaskService {
   Future<List<Task>> allTasks() => _repo.allTasks();
   Future<Task?> taskById(String id) => _repo.taskById(id);
   Future<double> earnedToday(DateTime now) => _repo.earnedToday(now.toLocal());
+  Future<({int base, int bonus})> dailyCredits(DateTime now) =>
+      _repo.dailyCredits(now.toLocal());
+  Future<double> creditBalance(DateTime now) => _repo.balance(now: now);
+  Future<ArchiveResult> archiveOverdue(
+    Task expected, {
+    required int quotedCost,
+    required DateTime now,
+  }) => _repo.archiveOverdue(expected, quotedCost: quotedCost, nowUtc: now);
   Future<List<Task>> history({String? kind, int offset = 0, int limit = 30}) {
     if (offset < 0 ||
         limit < 1 ||
@@ -106,6 +133,68 @@ class TaskService {
     return q.get();
   }
 
+  Future<List<CompletionRecord>> completionHistory({
+    String? kind,
+    DateTime? from,
+    DateTime? until,
+    int offset = 0,
+    int limit = 30,
+  }) => _db.transaction(() async {
+    if (offset < 0 ||
+        limit < 1 ||
+        limit > 100 ||
+        (kind != null && !['daily', 'ddl', 'plan'].contains(kind)) ||
+        (from != null && until != null && !until.isAfter(from))) {
+      throw const TaskCommandException('validation_failed');
+    }
+
+    final sources = [
+      if (kind != 'plan')
+        "SELECT id AS task_id, NULL AS plan_id, completed_at_utc FROM tasks "
+        "WHERE status = 'done' "
+        "${kind == 'daily' ? "AND task_kind = 'daily'" : kind == 'ddl' ? "AND task_kind != 'daily'" : ''}",
+      if (kind == null || kind == 'plan')
+        'SELECT NULL AS task_id, id AS plan_id, completed_at_utc FROM plans '
+        'WHERE completed_at_utc IS NOT NULL',
+    ];
+    final keys = await _db.customSelect(
+      'SELECT task_id, plan_id FROM (${sources.join(' UNION ALL ')}) '
+      'WHERE 1 = 1 '
+      '${from == null ? '' : 'AND completed_at_utc >= ? '}'
+      '${until == null ? '' : 'AND completed_at_utc < ? '}'
+      'ORDER BY completed_at_utc DESC, task_id IS NULL, task_id, plan_id '
+      'LIMIT ? OFFSET ?',
+      variables: [
+        if (from != null) Variable<DateTime>(from.toUtc()),
+        if (until != null) Variable<DateTime>(until.toUtc()),
+        Variable<int>(limit),
+        Variable<int>(offset),
+      ],
+      readsFrom: {_db.tasks, _db.plans},
+    ).get();
+    final taskIds = keys.map((r) => r.readNullable<String>('task_id')).nonNulls;
+    final planIds = keys.map((r) => r.readNullable<int>('plan_id')).nonNulls;
+    final tasks = {
+      if (taskIds.isNotEmpty)
+        for (final task in await (_db.select(_db.tasks)
+              ..where((t) => t.id.isIn(taskIds))).get())
+          task.id: task,
+    };
+    final plans = {
+      if (planIds.isNotEmpty)
+        for (final plan in await (_db.select(_db.plans)
+              ..where((p) => p.id.isIn(planIds))).get())
+          plan.id: plan,
+    };
+    return [
+      for (final row in keys)
+        if (row.readNullable<String>('task_id') case final id?)
+          CompletionRecord.forTask(tasks[id]!)
+        else
+          CompletionRecord.forPlan(plans[row.read<int>('plan_id')]!),
+    ];
+  });
+
   Future<CompleteResult> complete(Task expected, DateTime now) =>
       _db.transaction(() async {
         final current = await _repo.taskById(expected.id);
@@ -128,7 +217,7 @@ class TaskService {
     final errors = <String>[];
     if (d.draftId.isEmpty ||
         d.title.trim().isEmpty ||
-        !['daily', 'ddl'].contains(d.kind)) {
+        !['daily', 'ddl', 'plan'].contains(d.kind)) {
       errors.add('title_or_kind');
     }
     if (!['high', 'medium', 'low'].contains(d.priority) ||
@@ -138,11 +227,16 @@ class TaskService {
     if (!['manual', 'agent'].contains(d.source)) errors.add('source');
     if (d.unresolved.isNotEmpty) errors.add('unresolved_fields');
     if (d.deadline == null &&
+        d.kind != 'plan' &&
         !(d.explicitTemporary && d.kind == 'daily' && d.repeatRule == null)) {
       errors.add('deadline_required');
     }
     if (d.deadline != null && !d.deadline!.isAfter(now)) {
       errors.add('deadline_expired');
+    }
+    if (d.kind == 'plan' &&
+        (d.repeatRule != null || d.repeatEnd != null || d.reminders.isNotEmpty)) {
+      errors.add('plan_schedule');
     }
     if (d.kind == 'daily' &&
         d.deadline != null &&
@@ -202,8 +296,19 @@ class TaskService {
     final rows = (jsonDecode(approval.payload) as List)
         .cast<Map<String, dynamic>>();
     final ids = <String>[];
+    final plans = PlanService(_db);
     for (var i = 0; i < rows.length; i++) {
       final d = rows[i];
+      if (d['kind'] == 'plan') {
+        final raw = d['deadline'] as String?;
+        final deadline = raw == null ? null : DateTime.parse(raw);
+        if (deadline != null && !deadline.isAfter(now)) {
+          throw const TaskCommandException('deadline_expired');
+        }
+        final id = await plans.create(d['title'] as String, deadline, now);
+        ids.add('plan:$id');
+        continue;
+      }
       final deadline = d['deadline'] == null
           ? DateTime(
               now.toLocal().year,

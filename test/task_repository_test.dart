@@ -216,7 +216,7 @@ void main() {
 
     test('todo 任务可删；删除循环实例 = 跳过本次（不生成）', () async {
       final id = await addTask(title: '可删除', deadlineUtc: now.add(const Duration(days: 2)), repeatRule: 'every:1:day');
-      expect(await repo.deleteTask(id), isTrue);
+      expect(await repo.deleteTask(id, nowUtc: now), isTrue);
       expect(await repo.taskById(id), isNull);
     });
   });
@@ -399,7 +399,7 @@ void main() {
       final id = await addTask(title: '曾完成', deadlineUtc: now.add(const Duration(days: 2)));
       await repo.completeTask(id, now);
       await repo.undoComplete(id, now);
-      expect(await repo.deleteTask(id), isTrue);
+      expect(await repo.deleteTask(id, nowUtc: now), isTrue);
       // 余额不受影响（earn+adjust 相抵），流水保留作为审计
       expect(await repo.balance(), closeTo(0, 0.01));
       expect((await repo.ledger()).length, 2);

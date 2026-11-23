@@ -7,9 +7,9 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
-  HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\DailyDDLPersonalApp");
+  HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\DailyDDLTextAi13");
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
-    HWND existing = FindWindowW(nullptr, L"Daily DDL 1.2");
+    HWND existing = FindWindowW(nullptr, L"Daily DDL 1.3");
     if (existing) { ShowWindow(existing, SW_RESTORE); SetForegroundWindow(existing); }
     if (instance_mutex) CloseHandle(instance_mutex);
     return 0;
@@ -34,7 +34,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(900, 760);
-  if (!window.Create(L"Daily DDL 1.2", origin, size)) {
+  if (!window.Create(L"Daily DDL 1.3", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

@@ -191,6 +191,7 @@ void main() {
       raw.execute('ALTER TABLE tasks DROP COLUMN scheduled_date');
       raw.execute('ALTER TABLE tasks DROP COLUMN series_id');
       raw.execute('DROP INDEX IF EXISTS ux_daily_instance');
+      raw.execute('DROP TABLE plans');
       raw.execute('PRAGMA user_version = 1');
       // 模拟旧版检查-插入竞态：同一日期两条重复 penalty + 另一日期一条
       raw.execute('''
@@ -242,6 +243,7 @@ void main() {
       raw.execute('ALTER TABLE tasks DROP COLUMN scheduled_date');
       raw.execute('ALTER TABLE tasks DROP COLUMN series_id');
       raw.execute('DROP INDEX IF EXISTS ux_daily_instance');
+      raw.execute('DROP TABLE plans');
       raw.execute('PRAGMA user_version = 1');
 
       final dbUpgraded = AppDatabase(

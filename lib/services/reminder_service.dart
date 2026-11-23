@@ -15,7 +15,7 @@ class DueReminder {
 List<DueReminder> dueReminders(List<Task> tasks, DateTime now) {
   final result = <DueReminder>[];
   for (final t in tasks) {
-    if (t.status == 'done' || t.status == 'cancelled') continue;
+    if (t.status != 'todo' && t.status != 'overdue') continue;
     if (t.taskKind == 'daily' &&
         t.scheduledDate != TaskRepository.localDateKey(now.toLocal())) {
       continue;

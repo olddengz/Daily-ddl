@@ -62,7 +62,7 @@ class DesktopService {
     try {
       await windowManager.ensureInitialized();
       await windowManager.setMinimumSize(const Size(360, 440));
-      await windowManager.setTitle('Daily DDL 1.2');
+      await windowManager.setTitle('Daily DDL 1.3');
       windowReady = true;
     } on PlatformException {
       windowReady = false;

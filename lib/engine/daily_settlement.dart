@@ -17,6 +17,7 @@ class DailySettlement {
     final repo = TaskRepository(db);
     await repo.ensureDailyInstances(nowUtc);
     final overdueCount = await repo.markOverdueAll(nowUtc);
+    final balanceBeforeRollover = await repo.refreshDailyCredits(nowUtc);
 
     var penaltyApplied = false;
     final settings = SettingsDao(db);
@@ -74,6 +75,7 @@ class DailySettlement {
     return SettlementResult(
       overdueCount: overdueCount,
       penaltyApplied: penaltyApplied,
+      balanceBeforeRollover: balanceBeforeRollover,
     );
   }
 }
@@ -82,8 +84,10 @@ class SettlementResult {
   const SettlementResult({
     required this.overdueCount,
     required this.penaltyApplied,
+    this.balanceBeforeRollover,
   });
 
   final int overdueCount;
   final bool penaltyApplied;
+  final double? balanceBeforeRollover;
 }

@@ -19,6 +19,7 @@ part 'database.g.dart';
     RewardLogs,
     Settings,
     AiCache,
+    Plans,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -43,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
       "CREATE UNIQUE INDEX IF NOT EXISTS ux_daily_instance ON tasks(series_id, scheduled_date) WHERE task_kind='daily' AND series_id IS NOT NULL";
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -53,6 +54,7 @@ class AppDatabase extends _$AppDatabase {
       await m.database.customStatement(dailyUniqueIndexSql);
     },
     onUpgrade: (m, from, to) async {
+      if (from < 4) await m.createTable(plans);
       // 1 → 2：罚分每日唯一部分索引。先去重历史重复 penalty（旧竞态产物），
       // 否则 CREATE UNIQUE INDEX 会因重复行失败导致应用无法启动。
       if (from < 3) {

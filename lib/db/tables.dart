@@ -31,7 +31,7 @@ class Tasks extends Table {
   /// 手动权重覆盖；NULL 表示按公式
   RealColumn get weightOverride => real().nullable()();
 
-  /// todo / done / overdue / cancelled
+  /// todo / done / overdue / cancelled / archived
   TextColumn get status => text().withDefault(const Constant('todo'))();
 
   /// manual / recurring
@@ -56,6 +56,14 @@ class Tasks extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class Plans extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get title => text()();
+  DateTimeColumn get deadlineUtc => dateTime().nullable()();
+  DateTimeColumn get completedAtUtc => dateTime().nullable()();
+  DateTimeColumn get createdAtUtc => dateTime()();
+}
+
 class Subtasks extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get taskId => text().references(Tasks, #id)();
@@ -68,10 +76,11 @@ class Subtasks extends Table {
 /// 统一积分流水（v3.2：取代 v3 的 credits 表）
 class CreditLedger extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get type => text()(); // earn / redeem / penalty / adjust
-  RealColumn get amount =>
-      real()(); // earn 正 / redeem 负 / penalty 负 / adjust 可正可负
-  TextColumn get refType => text().nullable()(); // task / reward / null
+  // earn / adjust 是任务原始得分。daily_credit_base / daily_credit_bonus
+  // 是换算后的积分差额。兑换、罚分、归档以及计划奖扣单独计入余额。
+  TextColumn get type => text()();
+  RealColumn get amount => real()();
+  TextColumn get refType => text().nullable()(); // task / reward / plan / null
   TextColumn get refId => text().nullable()();
   TextColumn get settleDate => text()(); // 本地日期 YYYY-MM-DD
   TextColumn get note => text().withDefault(const Constant(''))();
