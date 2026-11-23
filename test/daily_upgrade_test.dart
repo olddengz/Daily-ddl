@@ -123,7 +123,7 @@ void main() {
     final end = (await repo.taskById('a'))!.repeatEndUtc!.toLocal();
     expect([end.day, end.hour, end.minute, end.second], [20, 23, 59, 59]);
   });
-  test('真实 schema2 升 schema3 保留旧任务和流水，默认待分类', () async {
+  test('真实 schema2 升 schema4 保留旧任务和流水，默认待分类', () async {
     final raw = sqlite3.openInMemory();
     final fresh = AppDatabase(
       NativeDatabase.opened(raw, closeUnderlyingOnClose: false),
@@ -134,6 +134,7 @@ void main() {
     for (final c in ['task_kind', 'scheduled_date', 'series_id']) {
       raw.execute('ALTER TABLE tasks DROP COLUMN $c');
     }
+    raw.execute('DROP TABLE plans');
     raw.execute('PRAGMA user_version=2');
     raw.execute(
       "INSERT INTO tasks(id,title,deadline_utc,created_at_utc,updated_at_utc) VALUES('old','old',1770000000,1760000000,1760000000)",
@@ -148,7 +149,7 @@ void main() {
             .data
             .values
             .single,
-        3,
+        4,
       );
     } finally {
       await upgraded.close();

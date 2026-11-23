@@ -102,6 +102,27 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('今天完成的 DDL 可在首页展开并撤销', (tester) async {
+    await add();
+    await tester.pumpWidget(App(db: db));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('今日已完成 · 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('课程论文'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('撤销完成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('撤销完成'));
+    await tester.pumpAndSettle();
+    expect((await TaskRepository(db).taskById('ddl'))!.status, 'todo');
+    expect(find.text('今日已完成 · 1'), findsNothing);
+    expect(find.text('今日积分 0'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('过往DDL完成只在历史中可查，详情只读，历史可撤销', (tester) async {
     await add(status: 'done');
     await tester.pumpWidget(App(db: db));
@@ -133,7 +154,11 @@ void main() {
     );
     await tester.tap(find.byTooltip('刷新'));
     await tester.pumpAndSettle();
-    expect((await TaskRepository(db).ledger()).length, 1);
+    final ledger = await TaskRepository(db).ledger();
+    expect(ledger.where((row) => row.type == 'earn').length, 1);
+    expect(ledger.where((row) => row.type == 'daily_credit_base').length, 1);
+    expect(find.text('今日积分 10'), findsOneWidget);
+    expect(find.text('累计积分 0'), findsOneWidget);
     expect(find.text('课程论文'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

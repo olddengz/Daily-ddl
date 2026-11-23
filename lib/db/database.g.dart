@@ -559,7 +559,7 @@ class Task extends DataClass implements Insertable<Task> {
   /// 手动权重覆盖；NULL 表示按公式
   final double? weightOverride;
 
-  /// todo / done / overdue / cancelled
+  /// todo / done / overdue / cancelled / archived
   final String status;
 
   /// manual / recurring
@@ -3478,6 +3478,376 @@ class AiCacheCompanion extends UpdateCompanion<AiCacheData> {
   }
 }
 
+class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deadlineUtcMeta = const VerificationMeta(
+    'deadlineUtc',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deadlineUtc = GeneratedColumn<DateTime>(
+    'deadline_utc',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _completedAtUtcMeta = const VerificationMeta(
+    'completedAtUtc',
+  );
+  @override
+  late final GeneratedColumn<DateTime> completedAtUtc =
+      GeneratedColumn<DateTime>(
+        'completed_at_utc',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _createdAtUtcMeta = const VerificationMeta(
+    'createdAtUtc',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAtUtc = GeneratedColumn<DateTime>(
+    'created_at_utc',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    deadlineUtc,
+    completedAtUtc,
+    createdAtUtc,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'plans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Plan> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('deadline_utc')) {
+      context.handle(
+        _deadlineUtcMeta,
+        deadlineUtc.isAcceptableOrUnknown(
+          data['deadline_utc']!,
+          _deadlineUtcMeta,
+        ),
+      );
+    }
+    if (data.containsKey('completed_at_utc')) {
+      context.handle(
+        _completedAtUtcMeta,
+        completedAtUtc.isAcceptableOrUnknown(
+          data['completed_at_utc']!,
+          _completedAtUtcMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at_utc')) {
+      context.handle(
+        _createdAtUtcMeta,
+        createdAtUtc.isAcceptableOrUnknown(
+          data['created_at_utc']!,
+          _createdAtUtcMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtUtcMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Plan map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Plan(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      deadlineUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deadline_utc'],
+      ),
+      completedAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}completed_at_utc'],
+      ),
+      createdAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at_utc'],
+      )!,
+    );
+  }
+
+  @override
+  $PlansTable createAlias(String alias) {
+    return $PlansTable(attachedDatabase, alias);
+  }
+}
+
+class Plan extends DataClass implements Insertable<Plan> {
+  final int id;
+  final String title;
+  final DateTime? deadlineUtc;
+  final DateTime? completedAtUtc;
+  final DateTime createdAtUtc;
+  const Plan({
+    required this.id,
+    required this.title,
+    this.deadlineUtc,
+    this.completedAtUtc,
+    required this.createdAtUtc,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || deadlineUtc != null) {
+      map['deadline_utc'] = Variable<DateTime>(deadlineUtc);
+    }
+    if (!nullToAbsent || completedAtUtc != null) {
+      map['completed_at_utc'] = Variable<DateTime>(completedAtUtc);
+    }
+    map['created_at_utc'] = Variable<DateTime>(createdAtUtc);
+    return map;
+  }
+
+  PlansCompanion toCompanion(bool nullToAbsent) {
+    return PlansCompanion(
+      id: Value(id),
+      title: Value(title),
+      deadlineUtc: deadlineUtc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deadlineUtc),
+      completedAtUtc: completedAtUtc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(completedAtUtc),
+      createdAtUtc: Value(createdAtUtc),
+    );
+  }
+
+  factory Plan.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Plan(
+      id: serializer.fromJson<int>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      deadlineUtc: serializer.fromJson<DateTime?>(json['deadlineUtc']),
+      completedAtUtc: serializer.fromJson<DateTime?>(json['completedAtUtc']),
+      createdAtUtc: serializer.fromJson<DateTime>(json['createdAtUtc']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'title': serializer.toJson<String>(title),
+      'deadlineUtc': serializer.toJson<DateTime?>(deadlineUtc),
+      'completedAtUtc': serializer.toJson<DateTime?>(completedAtUtc),
+      'createdAtUtc': serializer.toJson<DateTime>(createdAtUtc),
+    };
+  }
+
+  Plan copyWith({
+    int? id,
+    String? title,
+    Value<DateTime?> deadlineUtc = const Value.absent(),
+    Value<DateTime?> completedAtUtc = const Value.absent(),
+    DateTime? createdAtUtc,
+  }) => Plan(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    deadlineUtc: deadlineUtc.present ? deadlineUtc.value : this.deadlineUtc,
+    completedAtUtc: completedAtUtc.present
+        ? completedAtUtc.value
+        : this.completedAtUtc,
+    createdAtUtc: createdAtUtc ?? this.createdAtUtc,
+  );
+  Plan copyWithCompanion(PlansCompanion data) {
+    return Plan(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      deadlineUtc: data.deadlineUtc.present
+          ? data.deadlineUtc.value
+          : this.deadlineUtc,
+      completedAtUtc: data.completedAtUtc.present
+          ? data.completedAtUtc.value
+          : this.completedAtUtc,
+      createdAtUtc: data.createdAtUtc.present
+          ? data.createdAtUtc.value
+          : this.createdAtUtc,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Plan(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('deadlineUtc: $deadlineUtc, ')
+          ..write('completedAtUtc: $completedAtUtc, ')
+          ..write('createdAtUtc: $createdAtUtc')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, title, deadlineUtc, completedAtUtc, createdAtUtc);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Plan &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.deadlineUtc == this.deadlineUtc &&
+          other.completedAtUtc == this.completedAtUtc &&
+          other.createdAtUtc == this.createdAtUtc);
+}
+
+class PlansCompanion extends UpdateCompanion<Plan> {
+  final Value<int> id;
+  final Value<String> title;
+  final Value<DateTime?> deadlineUtc;
+  final Value<DateTime?> completedAtUtc;
+  final Value<DateTime> createdAtUtc;
+  const PlansCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.deadlineUtc = const Value.absent(),
+    this.completedAtUtc = const Value.absent(),
+    this.createdAtUtc = const Value.absent(),
+  });
+  PlansCompanion.insert({
+    this.id = const Value.absent(),
+    required String title,
+    this.deadlineUtc = const Value.absent(),
+    this.completedAtUtc = const Value.absent(),
+    required DateTime createdAtUtc,
+  }) : title = Value(title),
+       createdAtUtc = Value(createdAtUtc);
+  static Insertable<Plan> custom({
+    Expression<int>? id,
+    Expression<String>? title,
+    Expression<DateTime>? deadlineUtc,
+    Expression<DateTime>? completedAtUtc,
+    Expression<DateTime>? createdAtUtc,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (deadlineUtc != null) 'deadline_utc': deadlineUtc,
+      if (completedAtUtc != null) 'completed_at_utc': completedAtUtc,
+      if (createdAtUtc != null) 'created_at_utc': createdAtUtc,
+    });
+  }
+
+  PlansCompanion copyWith({
+    Value<int>? id,
+    Value<String>? title,
+    Value<DateTime?>? deadlineUtc,
+    Value<DateTime?>? completedAtUtc,
+    Value<DateTime>? createdAtUtc,
+  }) {
+    return PlansCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      deadlineUtc: deadlineUtc ?? this.deadlineUtc,
+      completedAtUtc: completedAtUtc ?? this.completedAtUtc,
+      createdAtUtc: createdAtUtc ?? this.createdAtUtc,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (deadlineUtc.present) {
+      map['deadline_utc'] = Variable<DateTime>(deadlineUtc.value);
+    }
+    if (completedAtUtc.present) {
+      map['completed_at_utc'] = Variable<DateTime>(completedAtUtc.value);
+    }
+    if (createdAtUtc.present) {
+      map['created_at_utc'] = Variable<DateTime>(createdAtUtc.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlansCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('deadlineUtc: $deadlineUtc, ')
+          ..write('completedAtUtc: $completedAtUtc, ')
+          ..write('createdAtUtc: $createdAtUtc')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3488,6 +3858,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $RewardLogsTable rewardLogs = $RewardLogsTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $AiCacheTable aiCache = $AiCacheTable(this);
+  late final $PlansTable plans = $PlansTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3500,6 +3871,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     rewardLogs,
     settings,
     aiCache,
+    plans,
   ];
 }
 
@@ -5865,6 +6237,206 @@ typedef $$AiCacheTableProcessedTableManager =
       AiCacheData,
       PrefetchHooks Function()
     >;
+typedef $$PlansTableCreateCompanionBuilder = PlansCompanion Function({
+  Value<int> id,
+  required String title,
+  Value<DateTime?> deadlineUtc,
+  Value<DateTime?> completedAtUtc,
+  required DateTime createdAtUtc,
+});
+typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
+  Value<int> id,
+  Value<String> title,
+  Value<DateTime?> deadlineUtc,
+  Value<DateTime?> completedAtUtc,
+  Value<DateTime> createdAtUtc,
+});
+
+class $$PlansTableFilterComposer extends Composer<_$AppDatabase, $PlansTable> {
+  $$PlansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deadlineUtc => $composableBuilder(
+    column: $table.deadlineUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get completedAtUtc => $composableBuilder(
+    column: $table.completedAtUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PlansTableOrderingComposer
+    extends Composer<_$AppDatabase, $PlansTable> {
+  $$PlansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deadlineUtc => $composableBuilder(
+    column: $table.deadlineUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get completedAtUtc => $composableBuilder(
+    column: $table.completedAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PlansTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PlansTable> {
+  $$PlansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deadlineUtc => $composableBuilder(
+    column: $table.deadlineUtc,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get completedAtUtc => $composableBuilder(
+    column: $table.completedAtUtc,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => column,
+  );
+}
+
+class $$PlansTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PlansTable,
+          Plan,
+          $$PlansTableFilterComposer,
+          $$PlansTableOrderingComposer,
+          $$PlansTableAnnotationComposer,
+          $$PlansTableCreateCompanionBuilder,
+          $$PlansTableUpdateCompanionBuilder,
+          (Plan, BaseReferences<_$AppDatabase, $PlansTable, Plan>),
+          Plan,
+          PrefetchHooks Function()
+        > {
+  $$PlansTableTableManager(_$AppDatabase db, $PlansTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<DateTime?> deadlineUtc = const Value.absent(),
+                Value<DateTime?> completedAtUtc = const Value.absent(),
+                Value<DateTime> createdAtUtc = const Value.absent(),
+              }) => PlansCompanion(
+                id: id,
+                title: title,
+                deadlineUtc: deadlineUtc,
+                completedAtUtc: completedAtUtc,
+                createdAtUtc: createdAtUtc,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String title,
+                Value<DateTime?> deadlineUtc = const Value.absent(),
+                Value<DateTime?> completedAtUtc = const Value.absent(),
+                required DateTime createdAtUtc,
+              }) => PlansCompanion.insert(
+                id: id,
+                title: title,
+                deadlineUtc: deadlineUtc,
+                completedAtUtc: completedAtUtc,
+                createdAtUtc: createdAtUtc,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PlansTable, Plan>(table),
+                  BaseReferences<_$AppDatabase, $PlansTable, Plan>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PlansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PlansTable,
+      Plan,
+      $$PlansTableFilterComposer,
+      $$PlansTableOrderingComposer,
+      $$PlansTableAnnotationComposer,
+      $$PlansTableCreateCompanionBuilder,
+      $$PlansTableUpdateCompanionBuilder,
+      (Plan, BaseReferences<_$AppDatabase, $PlansTable, Plan>),
+      Plan,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5883,4 +6455,6 @@ class $AppDatabaseManager {
       $$SettingsTableTableManager(_db, _db.settings);
   $$AiCacheTableTableManager get aiCache =>
       $$AiCacheTableTableManager(_db, _db.aiCache);
+  $$PlansTableTableManager get plans =>
+      $$PlansTableTableManager(_db, _db.plans);
 }

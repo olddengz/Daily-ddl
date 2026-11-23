@@ -1,11 +1,11 @@
 import '../db/database.dart';
 import '../engine/overdue_checker.dart';
 
-/// 首页任务分组（外部审查高优修复）：显式识别四状态，逾期任务不进活跃集合。
+/// 首页任务分组（外部审查高优修复）：显式识别任务状态，逾期任务不进活跃集合。
 ///
 /// - done → 已完成组
 /// - overdue（日结算已置位）→ 逾期组（**不再落入活跃**）
-/// - cancelled（阶段一无产生路径，预留）→ 隔离，不参与任何组
+/// - cancelled / archived → 不参与首页分组
 /// - todo 且 now >= deadline（时刻级）→ 逾期组
 /// - 其余 todo → 活跃组
 class TaskGrouping {
@@ -24,7 +24,7 @@ class TaskGrouping {
         done.add(t);
       } else if (t.status == 'overdue') {
         overdue.add(t);
-      } else if (t.status == 'cancelled') {
+      } else if (t.status == 'cancelled' || t.status == 'archived') {
         // 显式隔离，不参与活跃/分数
       } else if (OverdueChecker.isOverdue(
         status: t.status,

@@ -49,10 +49,14 @@ void main() {
     await tester.pumpAndSettle();
     expect((await TaskRepository(db).taskById('a'))!.status, 'done');
     expect((await TaskRepository(db).allTasks()).length, 1);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('今日已完成 · 1'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('今日已完成 · 1'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byIcon(Icons.check_circle));
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.check_circle));
     await tester.pumpAndSettle();
     expect((await TaskRepository(db).taskById('a'))!.status, 'todo');

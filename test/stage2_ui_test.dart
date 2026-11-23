@@ -90,12 +90,15 @@ void main() {
     await tester.pumpWidget(App(db: db));
     await tester.pumpAndSettle();
     expect(sends, 1);
-    expect(await db.select(db.settings).get(), isEmpty);
+    Future<Iterable<Setting>> reminderMarks() async =>
+        (await db.select(db.settings).get())
+            .where((setting) => setting.key.startsWith('reminder:'));
+    expect(await reminderMarks(), isEmpty);
     await tester.tap(find.text('重试恢复'));
     await tester.pumpAndSettle();
     expect(desktop.ready, isTrue);
     expect(sends, 2);
-    expect(await db.select(db.settings).get(), hasLength(3));
+    expect(await reminderMarks(), hasLength(3));
     await tester.tap(find.byTooltip('刷新'));
     await tester.pumpAndSettle();
     expect(sends, 2);
